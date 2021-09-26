@@ -26,9 +26,10 @@ import (
 	"github.com/opendependency/odep/cmd"
 )
 
-var _ = Describe("Root Command", func() {
+var _ = Describe("Build Command", func() {
 	var (
-		rootCmd *cobra.Command
+		rootCmd     *cobra.Command
+		rootCmdArgs []string
 
 		stdOut *strings.Builder
 		stdErr *strings.Builder
@@ -36,6 +37,7 @@ var _ = Describe("Root Command", func() {
 
 	BeforeEach(func() {
 		rootCmd = cmd.NewRootCommand()
+		rootCmdArgs = []string{"build"}
 
 		stdOut = &strings.Builder{}
 		stdErr = &strings.Builder{}
@@ -46,25 +48,26 @@ var _ = Describe("Root Command", func() {
 
 	Context("command is executed", func() {
 		JustBeforeEach(func() {
-			_ = rootCmd.Execute()
+			rootCmd.SetArgs(rootCmdArgs)
+
+			err := rootCmd.Execute()
+			Expect(err).To(BeNil())
 		})
 
 		When("no sub-command is called", func() {
 			It("should print help to stdout", func() {
-				Expect(stdOut.String()).To(Equal(`odep manages OpenDependency modules.
+				Expect(stdOut.String()).To(Equal(`Builds OpenDependency artifacts.
 
 Usage:
-  odep [command]
+  odep build [command]
 
 Available Commands:
-  build       Builds OpenDependency artifacts.
-  completion  generate the autocompletion script for the specified shell
-  help        Help about any command
+  module      Builds a module.
 
 Flags:
-  -h, --help   help for odep
+  -h, --help   help for build
 
-Use "odep [command] --help" for more information about a command.
+Use "odep build [command] --help" for more information about a command.
 `))
 			})
 

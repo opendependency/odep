@@ -20,17 +20,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// NewRootCommand creates a new root command.
-func NewRootCommand() *cobra.Command {
-	rootCmd := &cobra.Command{
-		Use:   "odep",
-		Short: "odep manages OpenDependency modules.",
-		Long:  `odep manages OpenDependency modules.`,
+// NewBuildCommand creates a new build command.
+func NewBuildCommand() *cobra.Command {
+	buildCmd := &cobra.Command{
+		Use:   "build",
+		Short: "Builds OpenDependency artifacts.",
 		// see https://github.com/spf13/cobra/issues/706#issuecomment-488340260
 		Args: cobra.NoArgs,
 	}
 
-	rootCmd.AddCommand(NewBuildCommand())
+	buildCmd.AddCommand(NewBuildModuleCommand())
 
-	return rootCmd
+	return buildCmd
 }
