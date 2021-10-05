@@ -23,6 +23,7 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"github.com/opendependency/odep/internal/module/repository"
 	"github.com/spf13/cobra"
 
 	"github.com/opendependency/odep/cmd"
@@ -128,20 +129,26 @@ dependencies:
 `
 
 	var (
-		rootCmd     *cobra.Command
-		rootCmdArgs []string
+		moduleRepository repository.Repository
+		rootCmd          *cobra.Command
+		rootCmdArgs      []string
 
+		stdIn  *strings.Reader
 		stdOut *strings.Builder
 		stdErr *strings.Builder
 	)
 
 	BeforeEach(func() {
-		rootCmd = cmd.NewRootCommand()
+		moduleRepository = repository.NewInMemoryRepository()
+
+		rootCmd = cmd.NewRootCommand(cmd.NewContext(moduleRepository))
 		rootCmdArgs = []string{"build", "module"}
 
+		stdIn = &strings.Reader{}
 		stdOut = &strings.Builder{}
 		stdErr = &strings.Builder{}
 
+		rootCmd.SetIn(stdIn)
 		rootCmd.SetOut(stdOut)
 		rootCmd.SetErr(stdErr)
 	})
@@ -163,9 +170,19 @@ dependencies:
 			})
 		})
 
-		When("module is built from file only", func() {
+		When("module is built from file", func() {
 
-			When("file format is json", func() {
+			When("file does not exists", func() {
+				BeforeEach(func() {
+					rootCmdArgs = append(rootCmdArgs, "-f", "unknown.dat")
+				})
+
+				It("should print error to stderr", func() {
+					Expect(stdErr.String()).To(Equal("Error: file does not exist\n"))
+				})
+			})
+
+			When("file is json", func() {
 				BeforeEach(func() {
 					f, err := os.CreateTemp("", "module*.json")
 					if err != nil {
@@ -245,7 +262,7 @@ dependencies:
 				})
 			})
 
-			When("file format is yaml", func() {
+			When("file is yaml", func() {
 
 				BeforeEach(func() {
 					f, err := os.CreateTemp("", "module*.yaml")
@@ -299,7 +316,141 @@ dependencies:
 			})
 		})
 
-		When("module is built by flags only", func() {
+		When("module is built from stdin", func() {
+
+			BeforeEach(func() {
+				rootCmdArgs = append(rootCmdArgs, "-f", "-")
+			})
+
+			When("stdin is empty", func() {
+				BeforeEach(func() {
+					r := strings.NewReader("")
+					*stdIn = *r
+				})
+
+				It("should print error to stderr", func() {
+					Expect(stdErr.String()).To(Equal("Error: format not supported\n"))
+				})
+			})
+
+			When("stdin is json", func() {
+				BeforeEach(func() {
+					r := strings.NewReader(testModuleJSON)
+					*stdIn = *r
+				})
+
+				It("should print module built", func() {
+					Expect(stdOut.String()).To(Equal("Module com.example.shop products go v1.1.1 built.\n"))
+				})
+
+				It("should not write to stderr", func() {
+					Expect(stdErr.String()).To(Equal(""))
+				})
+
+				When("flag output is set to json", func() {
+					BeforeEach(func() {
+						rootCmdArgs = append(rootCmdArgs, "--output", "json")
+					})
+
+					It("should print module json to stdout", func() {
+						Expect(stdOut.String()).To(Equal(testModuleJSON))
+					})
+
+					It("should not write to stderr", func() {
+						Expect(stdErr.String()).To(Equal(""))
+					})
+
+					When("flag pretty is set to true", func() {
+						BeforeEach(func() {
+							rootCmdArgs = append(rootCmdArgs, "--pretty")
+						})
+
+						It("should print module multi-line json with indents to stdout", func() {
+							Expect(stdOut.String()).To(Equal(testModuleJSONPretty))
+						})
+
+						It("should not write to stderr", func() {
+							Expect(stdErr.String()).To(Equal(""))
+						})
+					})
+				})
+
+				When("flag output is set to yaml", func() {
+					BeforeEach(func() {
+						rootCmdArgs = append(rootCmdArgs, "--output", "yaml")
+					})
+
+					It("should print module yaml to stdout", func() {
+						Expect(stdOut.String()).To(Equal(testModuleYAMLAlphabeticSortedKeys))
+					})
+
+					It("should not write to stderr", func() {
+						Expect(stdErr.String()).To(Equal(""))
+					})
+
+					When("flag pretty is set to true", func() {
+						BeforeEach(func() {
+							rootCmdArgs = append(rootCmdArgs, "--pretty")
+						})
+
+						It("should print module yaml to stdout", func() {
+							Expect(stdOut.String()).To(Equal(testModuleYAMLAlphabeticSortedKeys))
+						})
+
+						It("should not write to stderr", func() {
+							Expect(stdErr.String()).To(Equal(""))
+						})
+					})
+				})
+			})
+
+			When("stdin is yaml", func() {
+
+				BeforeEach(func() {
+					r := strings.NewReader(testModuleYAMLLogicalSortedKeys)
+					*stdIn = *r
+				})
+
+				It("should print module built", func() {
+					Expect(stdOut.String()).To(Equal("Module com.example.shop products go v1.1.1 built.\n"))
+				})
+
+				It("should not write to stderr", func() {
+					Expect(stdErr.String()).To(Equal(""))
+				})
+
+				When("flag output is set to json", func() {
+					BeforeEach(func() {
+						rootCmdArgs = append(rootCmdArgs, "--output", "json")
+					})
+
+					It("should print module json to stdout", func() {
+						Expect(stdOut.String()).To(Equal(testModuleJSON))
+					})
+
+					It("should not write to stderr", func() {
+						Expect(stdErr.String()).To(Equal(""))
+					})
+				})
+
+				When("flag output is set to yaml", func() {
+					BeforeEach(func() {
+						rootCmdArgs = append(rootCmdArgs, "--output", "yaml")
+					})
+
+					It("should print module json to stdout", func() {
+						Expect(stdOut.String()).To(Equal(testModuleYAMLAlphabeticSortedKeys))
+					})
+
+					It("should not write to stderr", func() {
+						Expect(stdErr.String()).To(Equal(""))
+					})
+				})
+			})
+
+		})
+
+		When("module is built from flags", func() {
 			BeforeEach(func() {
 				rootCmdArgs = append(rootCmdArgs,
 					"--namespace", "com.example.shop",

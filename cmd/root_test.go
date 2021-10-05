@@ -35,7 +35,7 @@ var _ = Describe("Root Command", func() {
 	)
 
 	BeforeEach(func() {
-		rootCmd = cmd.NewRootCommand()
+		rootCmd = cmd.NewRootCommand(cmd.NewContext(nil))
 
 		stdOut = &strings.Builder{}
 		stdErr = &strings.Builder{}

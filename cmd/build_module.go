@@ -20,9 +20,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
-	"path/filepath"
 	"strings"
 
 	specv1 "github.com/opendependency/go-spec/pkg/spec/v1"
@@ -32,7 +32,7 @@ import (
 )
 
 // NewBuildModuleCommand creates a new build module command.
-func NewBuildModuleCommand() *cobra.Command {
+func NewBuildModuleCommand(ctx Context) *cobra.Command {
 	var (
 		module = &specv1.Module{}
 
@@ -61,26 +61,13 @@ func NewBuildModuleCommand() *cobra.Command {
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if moduleFile != "" {
-				if _, err := os.Stat(moduleFile); os.IsNotExist(err) {
-					return fmt.Errorf("module file does not exist")
-				}
-				fileContent, err := ioutil.ReadFile(moduleFile)
-				if err != nil {
-					return fmt.Errorf("could not read module file: %w", err)
-				}
-
-				switch filepath.Ext(moduleFile) {
-				case ".json":
-					if err := protojson.Unmarshal(fileContent, module); err != nil {
-						return fmt.Errorf("could not unmarshal json: %w", err)
+				if moduleFile == "-" {
+					if err := unmarshalModuleFromReader(module, cmd.InOrStdin()); err != nil {
+						return err
 					}
-				case ".yaml":
-					json, err := yaml.YAMLToJSON(fileContent)
-					if err != nil {
-						return fmt.Errorf("could not convert yaml to json: %w", err)
-					}
-					if err := protojson.Unmarshal(json, module); err != nil {
-						return fmt.Errorf("could not unmarshal json: %w", err)
+				} else {
+					if err := unmarshalModuleFromFile(module, moduleFile); err != nil {
+						return err
 					}
 				}
 			}
@@ -135,6 +122,10 @@ func NewBuildModuleCommand() *cobra.Command {
 
 			if err := module.Validate(); err != nil {
 				return fmt.Errorf("validation failed: %w", err)
+			}
+
+			if err := ctx.ModuleRepository().AddModule(module); err != nil {
+				return fmt.Errorf("could not add module: %w", err)
 			}
 
 			switch moduleOutput {
@@ -192,6 +183,50 @@ func NewBuildModuleCommand() *cobra.Command {
 	buildModuleCmd.Flags().BoolVarP(&moduleOutputPretty, "pretty", "", false, "Pretty prints the output in multiple lines with indents.")
 
 	return buildModuleCmd
+}
+
+func unmarshalModuleFromReader(module *specv1.Module, r io.Reader) error {
+	content, err := ioutil.ReadAll(r)
+	if err != nil {
+		return fmt.Errorf("could not read all: %w", err)
+	}
+
+	if len(content) > 0 {
+		// Handle json format
+		if json.Valid(content) {
+			if err := protojson.Unmarshal(content, module); err != nil {
+				return fmt.Errorf("could not unmarshal json: %w", err)
+			}
+			return nil
+		}
+
+		// Handle yaml format
+		jsonContent, err := yaml.YAMLToJSONStrict(content)
+		if err != nil {
+			return fmt.Errorf("could not convert yaml to json: %w", err)
+		}
+		if json.Valid(jsonContent) {
+			if err := protojson.Unmarshal(jsonContent, module); err != nil {
+				return fmt.Errorf("could not unmarshal json: %w", err)
+			}
+			return nil
+		}
+	}
+
+	return fmt.Errorf("format not supported")
+}
+
+func unmarshalModuleFromFile(module *specv1.Module, path string) error {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return fmt.Errorf("file does not exist")
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("could not open file: %w", err)
+	}
+
+	return unmarshalModuleFromReader(module, f)
 }
 
 func parseModuleDependency(dependency string) (*specv1.ModuleDependency, error) {

@@ -17,19 +17,28 @@ limitations under the License.
 package cmd
 
 import (
-	"github.com/spf13/cobra"
+	"github.com/opendependency/odep/internal/module/repository"
 )
 
-// NewBuildCommand creates a new build command.
-func NewBuildCommand(ctx Context) *cobra.Command {
-	buildCmd := &cobra.Command{
-		Use:   "build",
-		Short: "Builds OpenDependency artifacts.",
-		// see https://github.com/spf13/cobra/issues/706#issuecomment-488340260
-		Args: cobra.NoArgs,
+// Context represents the command context.
+type Context interface {
+	// ModuleRepository provides the module repository to interact with modules.
+	ModuleRepository() repository.Repository
+}
+
+// NewContext creates a new command context.
+func NewContext(moduleRepository repository.Repository) *context {
+	return &context{
+		moduleRepository: moduleRepository,
 	}
+}
 
-	buildCmd.AddCommand(NewBuildModuleCommand(ctx))
+var _ Context = &context{}
 
-	return buildCmd
+type context struct {
+	moduleRepository repository.Repository
+}
+
+func (c *context) ModuleRepository() repository.Repository {
+	return c.moduleRepository
 }
