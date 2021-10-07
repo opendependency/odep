@@ -32,7 +32,7 @@ import (
 )
 
 // NewBuildModuleCommand creates a new build module command.
-func NewBuildModuleCommand(ctx Context) *cobra.Command {
+func NewBuildModuleCommand(providers *Providers) *cobra.Command {
 	var (
 		module = &specv1.Module{}
 
@@ -59,110 +59,113 @@ func NewBuildModuleCommand(ctx Context) *cobra.Command {
 		Short:        "Builds a module.",
 		Long:         `Builds a module.`,
 		SilenceUsage: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if moduleFile != "" {
-				if moduleFile == "-" {
-					if err := unmarshalModuleFromReader(module, cmd.InOrStdin()); err != nil {
-						return err
-					}
-				} else {
-					if err := unmarshalModuleFromFile(module, moduleFile); err != nil {
-						return err
-					}
+	}
+
+	moduleRepository := providers.ModuleRepository(buildModuleCmd)
+
+	buildModuleCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		if moduleFile != "" {
+			if moduleFile == "-" {
+				if err := unmarshalModuleFromReader(module, cmd.InOrStdin()); err != nil {
+					return err
+				}
+			} else {
+				if err := unmarshalModuleFromFile(module, moduleFile); err != nil {
+					return err
+				}
+			}
+		}
+
+		if moduleNamespace != "" {
+			module.Namespace = moduleNamespace
+		}
+		if moduleName != "" {
+			module.Name = moduleName
+		}
+		if moduleType != "" {
+			module.Type = moduleType
+		}
+
+		if module.Version == nil {
+			module.Version = &specv1.ModuleVersion{}
+		}
+		if moduleVersionName != "" {
+			module.Version.Name = moduleVersionName
+		}
+		if moduleVersionSchema != "" {
+			module.Version.Schema = &moduleVersionSchema
+		}
+		if len(moduleVersionReplaces) > 0 {
+			module.Version.Replaces = moduleVersionReplaces
+		}
+
+		if moduleAnnotations != nil && len(moduleAnnotations) > 0 {
+			module.Annotations = moduleAnnotations
+		}
+
+		upstream := specv1.DependencyDirection_UPSTREAM
+		downstream := specv1.DependencyDirection_DOWNSTREAM
+
+		for _, dependency := range moduleUpstreamDependencies {
+			moduleDependency, err := parseModuleDependency(dependency)
+			if err != nil {
+				return fmt.Errorf("could not parse upstream module dependency %q: %w", dependency, err)
+			}
+			moduleDependency.Direction = &upstream
+			module.Dependencies = append(module.Dependencies, moduleDependency)
+		}
+
+		for _, dependency := range moduleDownstreamDependencies {
+			moduleDependency, err := parseModuleDependency(dependency)
+			if err != nil {
+				return fmt.Errorf("could not parse downstream module dependency %q: %w", dependency, err)
+			}
+			moduleDependency.Direction = &downstream
+			module.Dependencies = append(module.Dependencies, moduleDependency)
+		}
+
+		if err := module.Validate(); err != nil {
+			return fmt.Errorf("validation failed: %w", err)
+		}
+
+		if err := moduleRepository().AddModule(module); err != nil {
+			return fmt.Errorf("could not add module: %w", err)
+		}
+
+		switch moduleOutput {
+		case "json":
+			marshalJson, err := protojson.Marshal(module)
+			if err != nil {
+				return fmt.Errorf("could not marshal to json: %w", err)
+			}
+
+			buf := &bytes.Buffer{}
+			if moduleOutputPretty {
+				if err := json.Indent(buf, marshalJson, "", "  "); err != nil {
+					return fmt.Errorf("could not indent json: %w", err)
+				}
+			} else {
+				if err := json.Compact(buf, marshalJson); err != nil {
+					return fmt.Errorf("could not compact json: %w", err)
 				}
 			}
 
-			if moduleNamespace != "" {
-				module.Namespace = moduleNamespace
+			cmd.Print(buf.String())
+		case "yaml":
+			marshalJson, err := protojson.Marshal(module)
+			if err != nil {
+				return fmt.Errorf("could not marshal to json: %w", err)
 			}
-			if moduleName != "" {
-				module.Name = moduleName
+			marshalledYaml, err := yaml.JSONToYAML(marshalJson)
+			if err != nil {
+				return fmt.Errorf("could not convert to yaml: %w", err)
 			}
-			if moduleType != "" {
-				module.Type = moduleType
-			}
+			cmd.Print(string(marshalledYaml))
+		default:
+			cmd.Printf("Module %s %s %s %s built.\n", module.Namespace, module.Name, module.Type, module.Version.Name)
+		}
 
-			if module.Version == nil {
-				module.Version = &specv1.ModuleVersion{}
-			}
-			if moduleVersionName != "" {
-				module.Version.Name = moduleVersionName
-			}
-			if moduleVersionSchema != "" {
-				module.Version.Schema = &moduleVersionSchema
-			}
-			if len(moduleVersionReplaces) > 0 {
-				module.Version.Replaces = moduleVersionReplaces
-			}
-
-			if moduleAnnotations != nil && len(moduleAnnotations) > 0 {
-				module.Annotations = moduleAnnotations
-			}
-
-			upstream := specv1.DependencyDirection_UPSTREAM
-			downstream := specv1.DependencyDirection_DOWNSTREAM
-
-			for _, dependency := range moduleUpstreamDependencies {
-				moduleDependency, err := parseModuleDependency(dependency)
-				if err != nil {
-					return fmt.Errorf("could not parse upstream module dependency %q: %w", dependency, err)
-				}
-				moduleDependency.Direction = &upstream
-				module.Dependencies = append(module.Dependencies, moduleDependency)
-			}
-
-			for _, dependency := range moduleDownstreamDependencies {
-				moduleDependency, err := parseModuleDependency(dependency)
-				if err != nil {
-					return fmt.Errorf("could not parse downstream module dependency %q: %w", dependency, err)
-				}
-				moduleDependency.Direction = &downstream
-				module.Dependencies = append(module.Dependencies, moduleDependency)
-			}
-
-			if err := module.Validate(); err != nil {
-				return fmt.Errorf("validation failed: %w", err)
-			}
-
-			if err := ctx.ModuleRepository().AddModule(module); err != nil {
-				return fmt.Errorf("could not add module: %w", err)
-			}
-
-			switch moduleOutput {
-			case "json":
-				marshalJson, err := protojson.Marshal(module)
-				if err != nil {
-					return fmt.Errorf("could not marshal to json: %w", err)
-				}
-
-				buf := &bytes.Buffer{}
-				if moduleOutputPretty {
-					if err := json.Indent(buf, marshalJson, "", "  "); err != nil {
-						return fmt.Errorf("could not indent json: %w", err)
-					}
-				} else {
-					if err := json.Compact(buf, marshalJson); err != nil {
-						return fmt.Errorf("could not compact json: %w", err)
-					}
-				}
-
-				cmd.Print(buf.String())
-			case "yaml":
-				marshalJson, err := protojson.Marshal(module)
-				if err != nil {
-					return fmt.Errorf("could not marshal to json: %w", err)
-				}
-				marshalledYaml, err := yaml.JSONToYAML(marshalJson)
-				if err != nil {
-					return fmt.Errorf("could not convert to yaml: %w", err)
-				}
-				cmd.Print(string(marshalledYaml))
-			default:
-				cmd.Printf("Module %s %s %s %s built.\n", module.Namespace, module.Name, module.Type, module.Version.Name)
-			}
-
-			return nil
-		},
+		return nil
 	}
 
 	buildModuleCmd.Flags().StringVarP(&moduleFile, "from-file", "f", "", "From-file specifies a module file. Supported formats: json, yaml")

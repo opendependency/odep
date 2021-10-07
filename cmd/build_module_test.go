@@ -23,8 +23,9 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"github.com/opendependency/odep/internal/module/repository"
+	"github.com/opendependency/odep/internal/module/repository/mocks"
 	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/mock"
 
 	"github.com/opendependency/odep/cmd"
 )
@@ -129,7 +130,7 @@ dependencies:
 `
 
 	var (
-		moduleRepository repository.Repository
+		moduleRepository *mocks.Repository
 		rootCmd          *cobra.Command
 		rootCmdArgs      []string
 
@@ -139,9 +140,9 @@ dependencies:
 	)
 
 	BeforeEach(func() {
-		moduleRepository = repository.NewInMemoryRepository()
+		moduleRepository = &mocks.Repository{}
 
-		rootCmd = cmd.NewRootCommand(cmd.NewContext(moduleRepository))
+		rootCmd = cmd.NewRootCommand(cmd.NewCommandContext(moduleRepository))
 		rootCmdArgs = []string{"build", "module"}
 
 		stdIn = &strings.Reader{}
@@ -195,6 +196,10 @@ dependencies:
 					}
 
 					rootCmdArgs = append(rootCmdArgs, "-f", f.Name())
+				})
+
+				It("should add module to repository", func() {
+					moduleRepository.AssertCalled(GinkgoT(), "AddModule", mock.Anything)
 				})
 
 				It("should print module built", func() {

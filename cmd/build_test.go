@@ -36,7 +36,7 @@ var _ = Describe("Build Command", func() {
 	)
 
 	BeforeEach(func() {
-		rootCmd = cmd.NewRootCommand(cmd.NewContext(nil))
+		rootCmd = cmd.NewRootCommand(cmd.NewCommandContext(nil))
 		rootCmdArgs = []string{"build"}
 
 		stdOut = &strings.Builder{}

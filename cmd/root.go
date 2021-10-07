@@ -21,7 +21,7 @@ import (
 )
 
 // NewRootCommand creates a new root command.
-func NewRootCommand(ctx Context) *cobra.Command {
+func NewRootCommand(providers *Providers) *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:   "odep",
 		Short: "odep manages OpenDependency modules.",
@@ -30,7 +30,7 @@ func NewRootCommand(ctx Context) *cobra.Command {
 		Args: cobra.NoArgs,
 	}
 
-	rootCmd.AddCommand(NewBuildCommand(ctx))
+	rootCmd.AddCommand(NewBuildCommand(providers))
 
 	return rootCmd
 }
